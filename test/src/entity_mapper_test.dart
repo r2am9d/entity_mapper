@@ -7,12 +7,16 @@ void main() {
   group('EntityMapper', () {
     test('MapToEntity annotation can be instantiated', () {
       expect(MapToEntity(String), isNotNull);
+      expect(MapToEntity(int), isNotNull);
+      expect(MapToEntity(DateTime), isNotNull);
     });
 
-    test('EntityField annotation can be instantiated', () {
-      expect(EntityField(), isNotNull);
-      expect(EntityField(ignore: true), isNotNull);
-      expect(EntityField(name: 'customName'), isNotNull);
+    test('MapToEntity annotation stores entityType correctly', () {
+      final stringAnnotation = MapToEntity(String);
+      final intAnnotation = MapToEntity(int);
+
+      expect(stringAnnotation.entityType, equals(String));
+      expect(intAnnotation.entityType, equals(int));
     });
   });
 }

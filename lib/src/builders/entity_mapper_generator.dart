@@ -102,7 +102,7 @@ class EntityMapperGenerator extends Generator {
       ..writeln('    return _instance ??= ${entityClassName}EntityMapper._();')
       ..writeln('  }')
       ..writeln()
-      // Generate toModel static method
+      // Always generate toModel static method
       ..writeln(
         _generateToModelMethod(
           className,
@@ -112,7 +112,7 @@ class EntityMapperGenerator extends Generator {
           entityFields,
         ),
       )
-      // Generate toEntity static method
+      // Always generate toEntity static method
       ..writeln(
         _generateToEntityStaticMethod(
           entityClassName,
@@ -122,9 +122,8 @@ class EntityMapperGenerator extends Generator {
       )
       ..writeln('}')
       ..writeln()
-      // Generate mixin - only with toEntity method
+      // Always generate mixin with toEntity method
       ..writeln('mixin ${entityClassName}EntityMappable {')
-      // Only generate toEntity instance method
       ..writeln(
         _generateToEntityMixinMethod(
           entityClassName,
@@ -157,7 +156,7 @@ class EntityMapperGenerator extends Generator {
       final fieldName = field.firstFragment.name2!;
       final fieldType = field.type;
 
-      // Simple field assignment for now
+      // Simple field assignment using direct field name mapping
       final fieldAssignment = _generateFieldAssignment(
         fieldName,
         fieldType,
