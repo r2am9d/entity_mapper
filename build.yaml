@@ -1,0 +1,18 @@
+targets:
+  $default:
+    builders:
+      entity_mapper|entity_mapper:
+        generate_for:
+          - lib/**.dart
+          - test/**.dart
+        options:
+          enabled: true
+
+builders:
+  entity_mapper:
+    import: "package:entity_mapper/src/builders/entity_mapper_generator.dart"
+    builder_factories: ["entityMapperBuilder"]
+    build_extensions: {".dart": [".entity_mapper.dart"]}
+    auto_apply: dependents
+    build_to: source
+    runs_before: ["source_gen|combining_builder"]
