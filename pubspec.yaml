@@ -6,7 +6,6 @@ repository: https://github.com/r2am9d/entity_mapper
 documentation: https://github.com/r2am9d/entity_mapper#readme
 topics:
   - clean-architecture
-  - dart-mappable
   - entity-mapping
   - code-generation
   - flutter
