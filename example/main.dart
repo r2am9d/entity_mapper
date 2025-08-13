@@ -1,6 +1,4 @@
-import 'package:entity_mapper/entity_mapper.dart';
-
-// Domain Entity (Pure)
+// domain/entities/user.dart
 class User {
   const User({
     required this.id,
@@ -15,8 +13,10 @@ class User {
   final DateTime createdAt;
 }
 
-// Data Model (w/ Data manipulation methods)
-part 'main.entity_mapper.dart';
+// data/models/user_model.dart
+import 'package:entity_mapper/entity_mapper.dart';
+
+part 'user_model.entity_mapper.dart';
 
 @MapToEntity(User)
 class UserModel with UserEntityMappable {
@@ -34,20 +34,20 @@ class UserModel with UserEntityMappable {
 }
 
 void main() {
-  // Create a domain entity
+  // Create domain entity
   final user = User(
-    id: 'user-123',
+    id: '1337',
     name: 'John Doe',
     email: 'john.doe@example.com',
     createdAt: DateTime.now(),
   );
   
-  // Convert entity to model
+  // Convert entity to model (static method)
   final userModel = UserEntityMapper.toModel(user);
   
-  // Convert model back to entity using mixin
+  // Convert model to entity (instance method)
   final userEntity = userModel.toEntity();
   
-  // Or use static method
+  // Convert model to entity (static method alternative)
   final userEntity2 = UserEntityMapper.toEntity(userModel);
 }

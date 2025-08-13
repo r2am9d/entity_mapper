@@ -1,6 +1,6 @@
 name: entity_mapper
-description: Clean Architecture entity mapping made simple
-version: 0.1.0
+description: Lightweight code generator for Clean Architecture focused projects. Automatically creates type-safe Entity ↔ Model mapping methods with dart_mappable-style patterns.
+version: 0.2.0
 homepage: https://github.com/r2am9d/entity_mapper
 repository: https://github.com/r2am9d/entity_mapper
 documentation: https://github.com/r2am9d/entity_mapper#readme

@@ -122,17 +122,9 @@ class EntityMapperGenerator extends Generator {
       )
       ..writeln('}')
       ..writeln()
-      // Generate mixin
+      // Generate mixin - only with toEntity method
       ..writeln('mixin ${entityClassName}EntityMappable {')
-      // Generate toModel instance method
-      ..writeln(
-        _generateToModelMixinMethod(
-          className,
-          entityClassName,
-          entityVariableName,
-        ),
-      )
-      // Generate toEntity instance method
+      // Only generate toEntity instance method
       ..writeln(
         _generateToEntityMixinMethod(
           entityClassName,
@@ -315,18 +307,6 @@ class EntityMapperGenerator extends Generator {
       return modelTypeName.substring(0, modelTypeName.length - 5);
     }
     return modelTypeName;
-  }
-
-  String _generateToModelMixinMethod(
-    String className,
-    String entityClassName,
-    String entityVariableName,
-  ) {
-    return '''
-  /// Creates a [$className] from a [$entityClassName] entity
-  $className toModel($entityClassName $entityVariableName) {
-    return ${entityClassName}EntityMapper.toModel($entityVariableName);
-  }''';
   }
 
   String _generateToEntityMixinMethod(
