@@ -1,6 +1,6 @@
 name: entity_mapper
 description: Clean Architecture entity mapping made simple
-version: 0.1.0+1
+version: 0.1.0
 homepage: https://github.com/r2am9d/entity_mapper
 repository: https://github.com/r2am9d/entity_mapper
 documentation: https://github.com/r2am9d/entity_mapper#readme
