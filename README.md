@@ -1,279 +1,202 @@
-# Entity Mapper
-Clean Architecture entity mapping made simple.
+# entity_mapper
 
 [![style: very good analysis][very_good_analysis_badge]][very_good_analysis_link]
 [![Powered by Mason](https://img.shields.io/endpoint?url=https%3A%2F%2Ftinyurl.com%2Fmason-badge)](https://github.com/felangel/mason)
 [![License: MIT][license_badge]][license_link]
 
-## Description
-A lightweight code generator for Dart that creates type-safe Entity ↔ Model mapping methods using dart_mappable-style patterns. Perfect for Clean Architecture and Domain-Driven Design.
+[Quick Start](#quick-start) • [Documentation](#overview) • [Example](example/) • [GitHub](https://github.com/r2am9d/entity_mapper)
+
+**Clean Architecture entity mapping made simple.**
+
+A lightweight code generator that creates type-safe Entity ↔ Model mapping methods using dart_mappable-style patterns. Perfect for Clean Architecture and Domain-Driven Design applications.
 
 ## Features
 
-- 🎯 **Focused Scope**: Only Entity ↔ Model mapping (not full class generation)
-- 🔄 **"dart_mappable" Pattern**: Industry-standard approach
-- 🏗️ **Clean Architecture**: Specifically designed for DDD patterns
-- ⚡ **Light Weight**: No unnecessary class generation
-- 🛠️ **Customizable**: Support for custom field mappings and transformations
+• 🎯 **Clean Architecture ready**: Perfect separation between domain and data layers  
+• 🔄 **dart_mappable Pattern**: Industry-standard approach and familiar API  
+• ⚡ **Zero runtime overhead**: All mapping code generated at build time  
+• 🛠️ **Lightweight & focused**: Only Entity ↔ Model mapping (no unnecessary bloat)  
+• 🔒 **Fully type-safe**: Generated code maintains complete type safety  
+• 🎛️ **Highly customizable**: Custom field mappings, transformations, and more
 
-## Installation 💻
+---
 
-**❗ In order to start using Entity Mapper you must have the [Flutter SDK][flutter_install_link] installed on your machine.**
+## Quick Start
 
-Add to your `pubspec.yaml`:
+**Requirements:** Dart SDK ≥ 3.8.0, Flutter ≥ 3.32.0
 
-```yaml
-dependencies:
-  entity_mapper: ^0.1.0
-
-dev_dependencies:
-  build_runner: ^2.6.0
-```
-
-Install it:
+Add dependencies:
 
 ```sh
-flutter pub get
+flutter pub add entity_mapper
+flutter pub add build_runner --dev
 ```
 
-## Usage 🚀
-
-### 1. Define Your Entity and Model
+Annotate your model classes:
 
 ```dart
-// Domain Entity (Pure)
+// domain/entities/user.dart
 class User {
-  const User({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.createdAt,
-  });
-
+  const User({required this.id, required this.name, required this.email});
   final String id;
   final String name;
   final String email;
-  final DateTime createdAt;
 }
 
-// Data Model (w/ Data manipulation methods)
+// data/models/user_model.dart
+import 'package:entity_mapper/entity_mapper.dart';
+
 part 'user_model.entity_mapper.dart';
 
 @MapToEntity(User)
 class UserModel with UserEntityMappable {
-  const UserModel({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.createdAt,
-  });
-
+  const UserModel({required this.id, required this.name, required this.email});
   final String id;
   final String name;
   final String email;
-  final DateTime createdAt;
 }
 ```
 
-### 2. Run Code Generation
+Generate code and use:
 
 ```sh
-flutter packages pub run build_runner build
+dart run build_runner build
 ```
-
-### 3. Use Generated Methods/Mappers
 
 ```dart
-// Create entity
-final user = User(
-  id: '1',
-  name: 'John Doe',
-  email: 'john@example.com',
-  createdAt: DateTime.now(),
-);
-
-// Convert entity to model
+// Convert entity ↔ model
+final user = User(id: '1', name: 'John', email: 'john@example.com');
 final userModel = UserEntityMapper.toModel(user);
-
-// Convert model to entity
-final userEntity1 = userModel.toEntity();
-final userEntity2 = UserEntityMapper.toEntity(userModel);
+final backToEntity = userModel.toEntity();
 ```
+
+---
+
+## Overview
+
+### Annotations
+
+Use `@MapToEntity()` on model classes to specify the target entity and generation options:
+
+```dart
+@MapToEntity(
+  User,                        // Target entity type
+  generateToModel: true,       // Generate entity → model (default: true)
+  generateToEntity: true,      // Generate model → entity (default: true)
+  fieldMappings: {            // Custom field name mappings
+    'fullName': 'name',
+  },
+)
+class UserModel with UserEntityMappable { ... }
+```
+
+Use `@EntityField()` on individual fields for customization:
+
+```dart
+class UserModel with UserEntityMappable {
+  @EntityField(name: 'user_name')                    // Custom entity field name
+  final String name;
+  
+  @EntityField(ignore: true)                         // Skip during mapping
+  final String internalId;
+  
+  @EntityField(customTransform: 'value.toUpperCase()') // Custom transformation
+  final String code;
+}
+```
+
+### Generated API
+
+**Static Mapper Classes:**
+- `{Entity}EntityMapper.toModel(entity)` - Convert entity to model
+- `{Entity}EntityMapper.toEntity(model)` - Convert model to entity
+
+**Mixin Methods:**
+- `toEntity()` - Convert this model instance to entity
+
+---
 
 ## Advanced Usage
 
 ### Custom Field Mappings
-
 ```dart
 @MapToEntity(
   User,
   fieldMappings: {
-    'fullName': 'name',  // Map 'fullName' field to 'name' in entity
+    'fullName': 'name',        // fullName in model → name in entity
+    'emailAddress': 'email',   // emailAddress in model → email in entity
   },
 )
 class UserModel with UserEntityMappable {
-  final String id;
-  final String fullName;  // Different field name
-  final String email;
-  
-  // ...
+  final String fullName;      // Maps to 'name'
+  final String emailAddress;  // Maps to 'email'
 }
 ```
 
-### Ignoring Fields
-
+### Selective Generation
 ```dart
-class UserModel with UserEntityMappable {
-  final String id;
-  final String name;
-  
-  @EntityField(ignore: true)
-  final String internalField;  // This field will be ignored during mapping
-  
-  // ...
-}
-```
+@MapToEntity(User, generateToEntity: false)  // Only entity → model
+class ReadOnlyUserModel with UserEntityMappable { ... }
 
-### Custom Field Names
-
-```dart
-class UserModel with UserEntityMappable {
-  final String id;
-  
-  @EntityField(name: 'user_name')
-  final String name;  // Maps to 'user_name' field in entity
-  
-  // ...
-}
+@MapToEntity(User, generateToModel: false)   // Only model → entity  
+class WriteOnlyUserModel with UserEntityMappable { ... }
 ```
 
 ### Nested Models
-
 ```dart
-// Domain Entities (Pure)
-class Car {
-  const Car({
-    required this.brand,
-    required this.model,
-    required this.engine,
-  });
-  
-  final String brand;
-  final String model;
-  final Engine engine;
-}
-
-class Engine {
-  const Engine({
-    required this.type,
-    required this.horsepower,
-  });
-  
-  final String type;
-  final int horsepower;
-}
-
-// Data Models (w/ Data manipulation methods)
 @MapToEntity(Car)
 class CarModel with CarEntityMappable {
-  const CarModel({
-    required this.brand,
-    required this.model,
-    required this.engine,
-  });
-  
   final String brand;
-  final String model;
-  final EngineModel engine;
+  final EngineModel engine;  // Automatically handles nested mapping
 }
 
 @MapToEntity(Engine)
 class EngineModel with EngineEntityMappable {
-  const EngineModel({
-    required this.type,
-    required this.horsepower,
-  });
-  
   final String type;
   final int horsepower;
 }
 ```
 
+---
+
 ## API Reference
 
-### Annotations
-
-#### `@MapToEntity(Type entityType)`
-Marks a class for automatic entity mapping generation.
+### `@MapToEntity(Type entityType, {bool generateToModel, bool generateToEntity, Map<String, String> fieldMappings})`
 
 **Parameters:**
-- `entityType`: The entity type to map to/from
-- `generateToModel`: Whether to generate the `toModel` method (default: `true`)
-- `generateToEntity`: Whether to generate the `toEntity` method (default: `true`)
-- `fieldMappings`: Custom field mappings for complex transformations
+- `entityType` - The entity type to map to/from
+- `generateToModel` - Generate entity → model method (default: true)
+- `generateToEntity` - Generate model → entity method (default: true)  
+- `fieldMappings` - Custom field name mappings
 
-#### `@EntityField({String? name, bool ignore, String? customTransform})`
-Provides additional metadata for entity field mapping.
+### `@EntityField({String? name, bool ignore, String? customTransform})`
 
 **Parameters:**
-- `name`: Custom name for the field in the entity
-- `ignore`: Whether to ignore this field during mapping (default: `false`)
-- `customTransform`: Custom transformation expression
+- `name` - Custom field name in the entity
+- `ignore` - Skip this field during mapping (default: false)
+- `customTransform` - Custom transformation expression
+
+---
 
 ## Examples
 
-Check out the [example](example/) directory for more detailed examples.
+Check out the [example](example/) directory for complete examples including nested models, custom transformations, and real-world Clean Architecture scenarios.
 
 ---
 
-## Continuous Integration 🤖
+## Contributing
 
-Entity Mapper comes with a built-in [GitHub Actions workflow][github_actions_link] powered by [Very Good Workflows][very_good_workflows_link] but you can also add your preferred CI/CD solution.
+Contributions welcome! Submit issues and pull requests on [GitHub](https://github.com/r2am9d/entity_mapper).
 
-Out of the box, on each pull request and push, the CI `formats`, `lints`, and `tests` the code. This ensures the code remains consistent and behaves correctly as you add functionality or make changes. The project uses [Very Good Analysis][very_good_analysis_link] for a strict set of analysis options used by our team. Code coverage is enforced using the [Very Good Workflows][very_good_coverage_link].
+## License
 
----
-
-## Running Tests 🧪
-
-For first time users, install the [very_good_cli][very_good_cli_link]:
-
-```sh
-dart pub global activate very_good_cli
-```
-
-To run all unit tests:
-
-```sh
-very_good test --coverage
-```
-
-To view the generated coverage report you can use [lcov](https://github.com/linux-test-project/lcov).
-
-```sh
-# Generate Coverage Report
-genhtml coverage/lcov.info -o coverage/
-
-# Open Coverage Report
-open coverage/index.html
-```
-
-[flutter_install_link]: https://docs.flutter.dev/get-started/install
-[github_actions_link]: https://docs.github.com/en/actions/learn-github-actions
-[license_badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[license_link]: https://opensource.org/licenses/MIT
-[logo_black]: https://raw.githubusercontent.com/VGVentures/very_good_brand/main/styles/README/vgv_logo_black.png#gh-light-mode-only
-[logo_white]: https://raw.githubusercontent.com/VGVentures/very_good_brand/main/styles/README/vgv_logo_white.png#gh-dark-mode-only
-[mason_link]: https://github.com/felangel/mason
-[very_good_analysis_badge]: https://img.shields.io/badge/style-very_good_analysis-B22C89.svg
-[very_good_analysis_link]: https://pub.dev/packages/very_good_analysis
-[very_good_cli_link]: https://pub.dev/packages/very_good_cli
-[very_good_coverage_link]: https://github.com/marketplace/actions/very-good-coverage
-[very_good_ventures_link]: https://verygood.ventures
-[very_good_ventures_link_light]: https://verygood.ventures#gh-light-mode-only
-[very_good_ventures_link_dark]: https://verygood.ventures#gh-dark-mode-only
-[very_good_workflows_link]: https://github.com/VeryGoodOpenSource/very_good_workflows
+[MIT License](LICENSE)
 
 ## Keywords
 
 #clean-architecture #entity-mapping #code-generation #domain-driven-design #dart-mappable #build-runner #source-gen
+
+[license_badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[license_link]: https://opensource.org/licenses/MIT
+[very_good_analysis_badge]: https://img.shields.io/badge/style-very_good_analysis-B22C89.svg
+[very_good_analysis_link]: https://pub.dev/packages/very_good_analysis
