@@ -1,4 +1,3 @@
-// ignore_for_file: unused_import, undefined_class, undefined_identifier
 import 'package:entity_mapper/entity_mapper.dart';
 
 // Domain Entity (Pure)
@@ -17,7 +16,7 @@ class User {
 }
 
 // Data Model (w/ Data manipulation methods)
-part 'user_model.entity_mapper.dart';
+part 'main.entity_mapper.dart';
 
 @MapToEntity(User)
 class UserModel with UserEntityMappable {
@@ -34,23 +33,21 @@ class UserModel with UserEntityMappable {
   final DateTime createdAt;
 }
 
-// Usage example
 void main() {
-  // Create entity
+  // Create a domain entity
   final user = User(
-    id: '1',
+    id: 'user-123',
     name: 'John Doe',
-    email: 'john@example.com',
+    email: 'john.doe@example.com',
     createdAt: DateTime.now(),
   );
-
+  
   // Convert entity to model
   final userModel = UserEntityMapper.toModel(user);
-
-  // Convert model to entity
-  final userEntity1 = userModel.toEntity();
+  
+  // Convert model back to entity using mixin
+  final userEntity = userModel.toEntity();
+  
+  // Or use static method
   final userEntity2 = UserEntityMapper.toEntity(userModel);
-
-  print('Entity mapping example ready!');
-  print('Entity: ${user.name}');
 }
