@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-08-13
+
+### Changed
+- **BREAKING**: Simplified `@MapToEntity` annotation to only accept `entityType` parameter
+- **BREAKING**: Removed `@EntityField` annotation entirely
+- **BREAKING**: Removed `generateToModel`, `generateToEntity`, and `fieldMappings` configuration options
+- **BREAKING**: Always generates both toModel and toEntity methods (no conditional generation)
+- **BREAKING**: Only supports direct field name mapping (no custom field mappings)
+
+### Removed
+- **BREAKING**: `@EntityField` annotation and all its functionality
+- **BREAKING**: Custom field mapping configuration via `fieldMappings`
+- **BREAKING**: Conditional method generation flags
+- **BREAKING**: Custom field transformations
+
+### Why This Change
+Simplified the package to focus on its core purpose:
+- **Reduced complexity**: Removed unused and over-engineered features
+- **Better maintainability**: Cleaner codebase with fewer edge cases
+- **Easier adoption**: Simpler API with just one required parameter
+- **Focus on essentials**: Entity ↔ Model mapping with direct field mapping
+
+### Migration Guide
+**Before:**
+```dart
+@MapToEntity(
+  User,
+  generateToModel: true,
+  generateToEntity: true,
+  fieldMappings: {'name': 'fullName'},
+)
+class UserModel with UserEntityMappable { ... }
+
+@EntityField(name: 'custom_name')
+final String name;
+```
+
+**After:**
+```dart
+@MapToEntity(User)
+class UserModel with UserEntityMappable { ... }
+
+// Ensure field names match between model and entity
+final String name; // Must match entity field name
+```
+
 ## [0.2.0] - 2025-08-13
 
 ### Changed

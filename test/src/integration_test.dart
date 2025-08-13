@@ -8,43 +8,20 @@ void main() {
     test('MapToEntity annotation works with correct parameters', () {
       final annotation = MapToEntity(String);
       expect(annotation.entityType, equals(String));
-      expect(annotation.generateToModel, isTrue);
-      expect(annotation.generateToEntity, isTrue);
     });
 
-    test('MapToEntity annotation works with custom parameters', () {
-      final annotation = MapToEntity(
-        String,
-        generateToModel: false,
-        generateToEntity: true,
-        fieldMappings: {'name': 'fullName'},
-      );
+    test('MapToEntity annotation works with different entity types', () {
+      final stringAnnotation = MapToEntity(String);
+      final intAnnotation = MapToEntity(int);
+      final userAnnotation = MapToEntity(DateTime);
 
-      expect(annotation.entityType, equals(String));
-      expect(annotation.generateToModel, isFalse);
-      expect(annotation.generateToEntity, isTrue);
-      expect(annotation.fieldMappings, equals({'name': 'fullName'}));
-    });
-
-    test('EntityField annotation works correctly', () {
-      const field1 = EntityField();
-      expect(field1.ignore, isFalse);
-      expect(field1.name, isNull);
-      expect(field1.customTransform, isNull);
-
-      const field2 = EntityField(
-        ignore: true,
-        name: 'customName',
-        customTransform: 'transform',
-      );
-      expect(field2.ignore, isTrue);
-      expect(field2.name, equals('customName'));
-      expect(field2.customTransform, equals('transform'));
+      expect(stringAnnotation.entityType, equals(String));
+      expect(intAnnotation.entityType, equals(int));
+      expect(userAnnotation.entityType, equals(DateTime));
     });
 
     test('annotation types are correct', () {
       expect(MapToEntity(String), isA<MapToEntity>());
-      expect(EntityField(), isA<EntityField>());
     });
   });
 }

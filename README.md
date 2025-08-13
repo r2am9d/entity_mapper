@@ -17,7 +17,7 @@ A lightweight code generator that creates type-safe Entity ↔ Model mapping met
 • ⚡ **Zero runtime overhead**: All mapping code generated at build time  
 • 🛠️ **Lightweight & focused**: Only Entity ↔ Model mapping (no unnecessary bloat)  
 • 🔒 **Fully type-safe**: Generated code maintains complete type safety  
-• 🎛️ **Highly customizable**: Custom field mappings, transformations, and more
+• � **Simple & focused**: Just specify the entity type - that's it!
 
 ---
 
@@ -76,32 +76,20 @@ final backToEntity = userModel.toEntity();
 
 ### Annotations
 
-Use `@MapToEntity()` on model classes to specify the target entity and generation options:
+Use `@MapToEntity()` on model classes to specify the target entity:
 
 ```dart
-@MapToEntity(
-  User,                        // Target entity type
-  generateToModel: true,       // Generate entity → model (default: true)
-  generateToEntity: true,      // Generate model → entity (default: true)
-  fieldMappings: {            // Custom field name mappings
-    'fullName': 'name',
-  },
-)
-class UserModel with UserEntityMappable { ... }
-```
-
-Use `@EntityField()` on individual fields for customization:
-
-```dart
+@MapToEntity(User) // Target entity type
 class UserModel with UserEntityMappable {
-  @EntityField(name: 'user_name')                    // Custom entity field name
+  const UserModel({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+  
+  final String id;
   final String name;
-  
-  @EntityField(ignore: true)                         // Skip during mapping
-  final String internalId;
-  
-  @EntityField(customTransform: 'value.toUpperCase()') // Custom transformation
-  final String code;
+  final String email;
 }
 ```
 
@@ -118,30 +106,6 @@ class UserModel with UserEntityMappable {
 
 ## Advanced Usage
 
-### Custom Field Mappings
-```dart
-@MapToEntity(
-  User,
-  fieldMappings: {
-    'fullName': 'name',        // fullName in model → name in entity
-    'emailAddress': 'email',   // emailAddress in model → email in entity
-  },
-)
-class UserModel with UserEntityMappable {
-  final String fullName;      // Maps to 'name'
-  final String emailAddress;  // Maps to 'email'
-}
-```
-
-### Selective Generation
-```dart
-@MapToEntity(User, generateToEntity: false)  // Only entity → model
-class ReadOnlyUserModel with UserEntityMappable { ... }
-
-@MapToEntity(User, generateToModel: false)   // Only model → entity  
-class WriteOnlyUserModel with UserEntityMappable { ... }
-```
-
 ### Nested Models
 ```dart
 @MapToEntity(Car)
@@ -157,30 +121,38 @@ class EngineModel with EngineEntityMappable {
 }
 ```
 
+### Lists and Collections
+```dart
+@MapToEntity(User)
+class UserModel with UserEntityMappable {
+  final String name;
+  final List<String> tags; // Simple lists work automatically
+  final List<AddressModel> addresses; // Nested model lists also supported
+}
+```
+
 ---
 
 ## API Reference
 
-### `@MapToEntity(Type entityType, {bool generateToModel, bool generateToEntity, Map<String, String> fieldMappings})`
+### `@MapToEntity(Type entityType)`
 
 **Parameters:**
 - `entityType` - The entity type to map to/from
-- `generateToModel` - Generate entity → model method (default: true)
-- `generateToEntity` - Generate model → entity method (default: true)  
-- `fieldMappings` - Custom field name mappings
 
-### `@EntityField({String? name, bool ignore, String? customTransform})`
-
-**Parameters:**
-- `name` - Custom field name in the entity
-- `ignore` - Skip this field during mapping (default: false)
-- `customTransform` - Custom transformation expression
+**Example:**
+```dart
+@MapToEntity(User)
+class UserModel with UserEntityMappable {
+  // Model implementation
+}
+```
 
 ---
 
 ## Examples
 
-Check out the [example](example/) directory for complete examples including nested models, custom transformations, and real-world Clean Architecture scenarios.
+Check out the [example](example/) directory for complete examples including nested models and real-world Clean Architecture scenarios.
 
 ---
 

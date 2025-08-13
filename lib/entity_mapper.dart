@@ -20,5 +20,4 @@
 /// ```
 library;
 
-export 'src/annotations/entity_field.dart';
 export 'src/annotations/map_to_entity.dart';
