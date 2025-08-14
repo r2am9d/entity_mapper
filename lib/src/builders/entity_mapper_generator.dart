@@ -1,51 +1,49 @@
-// ignore_for_file: public_member_api_docs, document_ignores, lines_longer_than_80_chars
-
+import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element2.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
+import 'package:entity_mapper/src/annotations/map_to_entity.dart';
 import 'package:source_gen/source_gen.dart';
 
+/// Builder entry point for Entity Mapper code generation.
+/// This builder scans for classes annotated with @MapToEntity and generates
+/// strict entity ↔ model mapping code for each.
 Builder entityMapperBuilder(BuilderOptions options) => LibraryBuilder(
   EntityMapperGenerator(),
   generatedExtension: '.entity_mapper.dart',
 );
 
+/// Main generator for entity ↔ model mapping code.
+/// - Only fields present in both model and entity are mapped.
+/// - If a required field in the entity is missing from the model, code generation fails.
+/// - Unmapped fields are logged as warnings.
+/// - All nullability mismatches between entity and model fields are reported in a single error.
 class EntityMapperGenerator extends Generator {
+  /// Scans the library for @MapToEntity annotations and generates mapping code.
   @override
   String generate(LibraryReader library, BuildStep buildStep) {
-    final annotatedElements = <Element2>[];
-
-    // Find all classes with @MapToEntity annotation
-    for (final element in library.allElements) {
-      if (element is ClassElement2) {
-        final annotation = const TypeChecker.fromUrl(
-          'package:entity_mapper/src/annotations/map_to_entity.dart#MapToEntity',
-        ).firstAnnotationOf(element.firstFragment);
-        if (annotation != null) {
-          annotatedElements.add(element);
-        }
-      }
-    }
-
-    if (annotatedElements.isEmpty) {
+    // Find all classes annotated with @MapToEntity
+    const checker = TypeChecker.typeNamed(
+      MapToEntity,
+      inPackage: 'entity_mapper',
+    );
+    final annotated = library.annotatedWith(checker);
+    if (annotated.isEmpty) {
       return '';
     }
 
+    // Start generated file with part directive
     final buffer = StringBuffer()
       ..writeln("part of '${buildStep.inputId.path.split('/').last}';")
       ..writeln();
 
-    // Generate extensions for all annotated classes
-    for (final element in annotatedElements) {
-      final annotation = const TypeChecker.fromUrl(
-        'package:entity_mapper/src/annotations/map_to_entity.dart#MapToEntity',
-      ).firstAnnotationOf(element.firstFragment)!;
-      final annotationReader = ConstantReader(annotation);
-
+    // Generate mapping code for each annotated class
+    for (final annotatedElement in annotated) {
+      final classElement = annotatedElement.element as ClassElement2;
       buffer.writeln(
         _generateForElement(
-          element as ClassElement2,
-          annotationReader,
+          classElement,
+          annotatedElement.annotation.objectValue,
           buildStep,
         ),
       );
@@ -54,268 +52,309 @@ class EntityMapperGenerator extends Generator {
     return buffer.toString();
   }
 
+  /// Generates mapping code for a single annotated model class.
+  /// Performs strict field matching and multi-error reporting for nullability.
   String _generateForElement(
     ClassElement2 element,
-    ConstantReader annotation,
+    DartObject? annotation,
     BuildStep buildStep,
   ) {
-    final className = element.firstFragment.name2!;
-    final entityTypeReader = annotation.read('entityType');
-
+    // Read annotation and extract entity type
+    final annotationReader = ConstantReader(annotation);
+    final className = element.displayName;
+    final entityTypeReader = annotationReader.read('entityType');
     if (!entityTypeReader.isType) {
       throw InvalidGenerationSourceError(
-        'entityType must be a valid Type.',
-        todo: 'Provide a valid Type for entityType.',
+        'entityType for @$className must be a valid Type.',
+        todo: 'Provide a valid Type for entityType in @$className.',
       );
     }
-
     final entityType = entityTypeReader.typeValue;
     final entityElement = entityType.element3;
-
     if (entityElement is! ClassElement2) {
       throw InvalidGenerationSourceError(
-        'entityType must be a class.',
-        todo: 'Provide a class type for entityType.',
+        'entityType for @$className must be a class.',
+        todo: 'Provide a class type for entityType in @$className.',
       );
     }
 
-    final entityClassName = entityElement.firstFragment.name2!;
-    final entityVariableName = _camelCase(entityClassName);
-
-    // Get model fields using the Element2 API
+    // Prepare names and field lists
+    final mapperBaseName = _getEntityTypeFromModelType(className);
+    final entityVariableName = _camelCase(mapperBaseName);
     final modelFields = element.fields2
         .where((f) => !f.isStatic && !f.isSynthetic)
         .toList();
-
-    // Get entity fields for validation using the Element2 API
     final entityFields = entityElement.fields2
         .where((f) => !f.isStatic && !f.isSynthetic)
         .toList();
+    final modelFieldNames = modelFields.map((f) => f.displayName).toSet();
+    final entityFieldNames = entityFields.map((f) => f.displayName).toSet();
+    final commonFieldNames = modelFieldNames.intersection(entityFieldNames);
+    final unmappedModelFields = modelFieldNames.difference(entityFieldNames);
+    final unmappedEntityFields = entityFieldNames.difference(modelFieldNames);
 
+    // Warn about unmapped fields
+    if (unmappedModelFields.isNotEmpty) {
+      log.warning(
+        'Unmapped model fields in $className: ${unmappedModelFields.join(', ')}',
+      );
+    }
+    if (unmappedEntityFields.isNotEmpty) {
+      log.warning(
+        'Unmapped entity fields in ${entityElement.displayName}: ${unmappedEntityFields.join(', ')}',
+      );
+    }
+
+    // Strict: fail if any required field in entity is missing from model
+    ConstructorElement2? entityConstructor;
+    for (final ctor in entityElement.constructors2) {
+      if (ctor.displayName.isEmpty) {
+        entityConstructor = ctor;
+        break;
+      }
+    }
+    entityConstructor ??= entityElement.constructors2.isNotEmpty
+        ? entityElement.constructors2.first
+        : null;
+
+    if (entityConstructor == null) {
+      throw InvalidGenerationSourceError(
+        'No constructors found for entity [${entityElement.displayName}].',
+        todo: 'Add a constructor to your entity.',
+      );
+    }
+    // Check for required fields in entity missing from model
+    for (final param in entityConstructor.formalParameters) {
+      final fieldName = param.displayName;
+      final isRequired =
+          param.isRequiredNamed ||
+          param.isRequiredPositional ||
+          (!param.isOptional);
+      if (isRequired && !modelFieldNames.contains(fieldName)) {
+        throw InvalidGenerationSourceError(
+          'Required field "$fieldName" in entity [${entityElement.displayName}] is missing from model [$className].',
+          todo: 'Add "$fieldName" to model or make it optional in entity.',
+        );
+      }
+    }
+
+    // Multi-error reporting for nullability mismatches between entity and model
+    final nullabilityErrors = <String>[];
+    for (final fieldName in commonFieldNames) {
+      FieldElement2? modelField;
+      for (final f in modelFields) {
+        if (f.displayName == fieldName) {
+          modelField = f;
+          break;
+        }
+      }
+      FieldElement2? entityField;
+      for (final f in entityFields) {
+        if (f.displayName == fieldName) {
+          entityField = f;
+          break;
+        }
+      }
+      if (modelField != null && entityField != null) {
+        final modelType = modelField.type;
+        final entityType = entityField.type;
+        final modelTypeStr = modelType.getDisplayString();
+        final entityTypeStr = entityType.getDisplayString();
+        final modelIsNullable = modelTypeStr.endsWith('?');
+        final entityIsNullable = entityTypeStr.endsWith('?');
+        if (!modelIsNullable && entityIsNullable) {
+          nullabilityErrors.add(
+            'Nullability mismatch for field "$fieldName": model [$className] requires non-nullable, but entity [${entityElement.displayName}] allows null.\n  Fix: Make "$fieldName" non-nullable in entity or nullable in model.',
+          );
+        }
+      }
+    }
+
+    // Throw a single error listing all nullability mismatches
+    if (nullabilityErrors.isNotEmpty) {
+      throw InvalidGenerationSourceError(
+        nullabilityErrors.join('\n\n'),
+        todo: 'Resolve all listed nullability mismatches.',
+      );
+    }
+
+    // Generate the mapping class and mixin
     final buffer = StringBuffer()
-      // Generate mapper class
-      ..writeln('class ${entityClassName}EntityMapper {')
-      ..writeln('  ${entityClassName}EntityMapper._();')
+      ..writeln('class ${mapperBaseName}EntityMapper {')
+      ..writeln('  ${mapperBaseName}EntityMapper._();')
       ..writeln()
-      ..writeln('  static ${entityClassName}EntityMapper? _instance;')
-      ..writeln('  static ${entityClassName}EntityMapper ensureInitialized() {')
-      ..writeln('    return _instance ??= ${entityClassName}EntityMapper._();')
+      ..writeln('  static ${mapperBaseName}EntityMapper? _instance;')
+      ..writeln('  static ${mapperBaseName}EntityMapper ensureInitialized() {')
+      ..writeln('    return _instance ??= ${mapperBaseName}EntityMapper._();')
       ..writeln('  }')
       ..writeln()
-      // Always generate toModel static method
       ..writeln(
-        _generateToModelMethod(
+        _generateToModelMethodStrict(
           className,
-          entityClassName,
+          entityElement.displayName,
           entityVariableName,
           modelFields,
           entityFields,
+          commonFieldNames,
         ),
       )
-      // Always generate toEntity static method
       ..writeln(
-        _generateToEntityStaticMethod(
-          entityClassName,
+        _generateToEntityStaticMethodStrict(
+          entityElement.displayName,
           className,
           modelFields,
+          commonFieldNames,
         ),
       )
       ..writeln('}')
-      ..writeln()
-      // Always generate mixin with toEntity method
-      ..writeln('mixin ${entityClassName}EntityMappable {')
+      ..writeln('mixin ${mapperBaseName}EntityMappable {')
       ..writeln(
         _generateToEntityMixinMethod(
-          entityClassName,
+          entityElement.displayName,
           className,
+          mapperBaseName,
         ),
       )
       ..writeln('}')
       ..writeln();
-
     return buffer.toString();
   }
 
-  String _generateToModelMethod(
+  /// Generates static method to convert entity to model.
+  String _generateToModelMethodStrict(
     String className,
     String entityClassName,
     String entityVariableName,
     List<FieldElement2> modelFields,
     List<FieldElement2> entityFields,
+    Set<String> commonFieldNames,
   ) {
     final buffer = StringBuffer()
-      ..writeln(
-        '  /// Creates a [$className] from a [$entityClassName] entity',
-      )
-      ..writeln(
-        '  static $className toModel($entityClassName $entityVariableName) {',
-      )
+      ..writeln('  /// Creates a [$className] from a [$entityClassName] entity')
+      ..writeln('  static $className toModel($entityClassName entity) {')
       ..writeln('    return $className(');
-
-    for (final field in modelFields) {
-      final fieldName = field.firstFragment.name2!;
+    for (final fieldName in commonFieldNames) {
+      final field = modelFields.firstWhere((f) => f.displayName == fieldName);
       final fieldType = field.type;
-
-      // Simple field assignment using direct field name mapping
       final fieldAssignment = _generateFieldAssignment(
         fieldName,
         fieldType,
-        entityVariableName,
-        entityFields,
+        className,
+        entityClassName,
       );
-
       buffer.writeln('      $fieldName: $fieldAssignment,');
     }
-
     buffer
       ..writeln('    );')
       ..writeln('  }');
     return buffer.toString();
   }
 
-  String _generateToEntityStaticMethod(
+  /// Generates static method to convert model to entity.
+  String _generateToEntityStaticMethodStrict(
     String entityClassName,
     String className,
     List<FieldElement2> modelFields,
+    Set<String> commonFieldNames,
   ) {
     final buffer = StringBuffer()
       ..writeln()
       ..writeln('  /// Converts a [$className] to a [$entityClassName] entity')
       ..writeln('  static $entityClassName toEntity($className model) {')
       ..writeln('    return $entityClassName(');
-
-    for (final field in modelFields) {
-      final fieldName = field.firstFragment.name2!;
+    for (final fieldName in commonFieldNames) {
+      final field = modelFields.firstWhere((f) => f.displayName == fieldName);
       final fieldType = field.type;
-
       final fieldAssignment = _generateToEntityFieldAssignment(
         fieldName,
         fieldType,
+        className,
+        entityClassName,
       );
       buffer.writeln('      $fieldName: $fieldAssignment,');
     }
-
     buffer
       ..writeln('    );')
       ..writeln('  }');
     return buffer.toString();
   }
 
-  String _generateFieldAssignment(
-    String fieldName,
-    DartType fieldType,
-    String entityVariableName,
-    List<FieldElement2> entityFields,
-  ) {
-    // Check if the entity has this field
-    final hasEntityField = entityFields.any(
-      (f) => f.firstFragment.name2 == fieldName,
-    );
-
-    if (!hasEntityField) {
-      throw InvalidGenerationSourceError(
-        'Field "$fieldName" not found in entity.',
-        todo: 'Add field "$fieldName" to entity.',
-      );
-    }
-
-    // Handle different field types
-    if (_isSimpleType(fieldType)) {
-      return '$entityVariableName.$fieldName';
-    } else if (_isModelType(fieldType)) {
-      // Use the corresponding entity mapper
-      final modelTypeName = fieldType.getDisplayString();
-      final entityTypeName = _getEntityTypeFromModelType(modelTypeName);
-      return '${entityTypeName}EntityMapper.toModel($entityVariableName.$fieldName)';
-    } else if (_isListType(fieldType)) {
-      final elementType = _getListElementType(fieldType);
-      if (_isSimpleType(elementType)) {
-        return '$entityVariableName.$fieldName';
-      } else if (_isModelType(elementType)) {
-        final modelTypeName = elementType.getDisplayString();
-        final entityTypeName = _getEntityTypeFromModelType(modelTypeName);
-        return '$entityVariableName.$fieldName'
-            '.map((e) => ${entityTypeName}EntityMapper.toModel(e)).toList()';
-      }
-    }
-
-    // Fallback to direct assignment
-    return '$entityVariableName.$fieldName';
-  }
-
-  String _generateToEntityFieldAssignment(
-    String fieldName,
-    DartType fieldType,
-  ) {
-    // Handle different field types
-    if (_isSimpleType(fieldType)) {
-      return 'model.$fieldName';
-    } else if (_isModelType(fieldType)) {
-      // Assume the field has a toEntity method
-      return 'model.$fieldName.toEntity()';
-    } else if (_isListType(fieldType)) {
-      final elementType = _getListElementType(fieldType);
-      if (_isSimpleType(elementType)) {
-        return 'model.$fieldName';
-      } else if (_isModelType(elementType)) {
-        return 'model.$fieldName.map((e) => e.toEntity()).toList()';
-      }
-    }
-
-    // Fallback to direct assignment
-    return 'model.$fieldName';
-  }
-
-  bool _isSimpleType(DartType type) {
-    final typeName = type.getDisplayString();
-    return [
-      'int',
-      'double',
-      'String',
-      'bool',
-      'DateTime',
-    ].contains(typeName);
-  }
-
-  bool _isModelType(DartType type) {
-    final typeName = type.getDisplayString();
-    // Assume model types end with 'Model'
-    return typeName.endsWith('Model');
-  }
-
-  bool _isListType(DartType type) {
-    return type.isDartCoreList;
-  }
-
-  DartType _getListElementType(DartType listType) {
-    if (listType is InterfaceType && listType.typeArguments.isNotEmpty) {
-      return listType.typeArguments.first;
-    }
-    throw InvalidGenerationSourceError('Cannot determine list element type');
-  }
-
+  /// Converts a string to camelCase.
   String _camelCase(String input) {
     if (input.isEmpty) return input;
     return input[0].toLowerCase() + input.substring(1);
   }
 
+  /// Strips 'Model' suffix from type name to get entity type.
   String _getEntityTypeFromModelType(String modelTypeName) {
-    // Simple convention: remove "Model" suffix to get entity type
-    // e.g., "UserModel" -> "User"
     if (modelTypeName.endsWith('Model')) {
       return modelTypeName.substring(0, modelTypeName.length - 5);
     }
     return modelTypeName;
   }
 
+  /// Generates mixin method for converting model instance to entity.
   String _generateToEntityMixinMethod(
     String entityClassName,
     String className,
+    String mapperBaseName,
   ) {
     return '''
   /// Converts this instance to [$entityClassName] entity
   $entityClassName toEntity() {
-    return ${entityClassName}EntityMapper.toEntity(this as $className);
+    return ${mapperBaseName}EntityMapper.toEntity(this as $className);
   }''';
+  }
+
+  /// Handles mapping for `List<T>` fields where T is a mappable type.
+  String _generateFieldAssignment(
+    String fieldName,
+    DartType fieldType,
+    String modelClassName,
+    String entityClassName,
+  ) {
+    if (fieldType is ParameterizedType &&
+        fieldType.typeArguments.length == 1 &&
+        (fieldType.element3?.displayName == 'List')) {
+      final itemType = fieldType.typeArguments.first;
+      final itemTypeName = itemType.getDisplayString();
+      // If itemType ends with 'Model', map from entity to model
+      if (itemTypeName.endsWith('Model')) {
+        final entityTypeName = itemTypeName.substring(
+          0,
+          itemTypeName.length - 5,
+        );
+        final mapperName = '${entityTypeName}EntityMapper';
+        return 'entity.$fieldName.map($mapperName.toModel).toList()';
+      }
+    }
+    // Direct assignment for primitive or non-mappable types
+    return 'entity.$fieldName';
+  }
+
+  /// Handles mapping for `List<T>` fields where T is a mappable type.
+  String _generateToEntityFieldAssignment(
+    String fieldName,
+    DartType fieldType,
+    String modelClassName,
+    String entityClassName,
+  ) {
+    if (fieldType is ParameterizedType &&
+        fieldType.typeArguments.length == 1 &&
+        (fieldType.element3?.displayName == 'List')) {
+      final itemType = fieldType.typeArguments.first;
+      final itemTypeName = itemType.getDisplayString();
+      // If itemType ends with 'Model', map from model to entity
+      if (itemTypeName.endsWith('Model')) {
+        final entityTypeName = itemTypeName.substring(
+          0,
+          itemTypeName.length - 5,
+        );
+        final mapperName = '${entityTypeName}EntityMapper';
+        return 'model.$fieldName.map($mapperName.toEntity).toList()';
+      }
+    }
+    // Direct assignment for primitive or non-mappable types
+    return 'model.$fieldName';
   }
 }

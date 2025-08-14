@@ -1,27 +1,29 @@
 class User {
   const User({
     required this.id,
-    required this.name,
-    required this.email,
-    required this.createdAt,
+    this.name,
+    this.age,
     required this.addresses,
   });
 
   final String id;
-  final String name;
-  final String email;
-  final DateTime createdAt;
+  final String? name;
+  final int? age;
   final List<Address> addresses;
+
+  @override
+  String toString() => 'User';
 }
 
 class Address {
   const Address({
     required this.street,
     required this.city,
-    required this.zipCode,
   });
 
   final String street;
   final String city;
-  final String zipCode;
+
+  @override
+  String toString() => 'Address';
 }
