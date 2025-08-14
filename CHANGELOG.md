@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-08-14
+
+### Added
+- **Nullability Support**: Models and entities now support nullable fields and lists, with robust mapping logic for nulls and empty collections.
+- **Nested List Mapping**: Automatic mapping for nested lists of models/entities, including deep conversion and round-trip tests.
+- **Comprehensive Example Update**: `example/main.dart` now demonstrates bi-directional mapping, nullability, and nested lists, matching real-world Clean Architecture scenarios.
+- **Best Practices Documentation**: Updated `README.md` to emphasize direct imports, pure Dart entities, and avoidance of problematic index files in tests.
+
+### Changed
+- **Test Suite Refactor**: Test files now define models directly or import only pure Dart entities, avoiding central index files and problematic dependencies.
+- **Mapping Logic Hardening**: Improved error handling and edge case coverage in mapping logic, including multi-error reporting for nullability mismatches.
+- **Annotation Usage**: Tests now verify annotation instantiation and usage, with static checks and string output validation.
+- **README.md Overhaul**: Documentation now reflects latest patterns, nullability, nested lists, and best practices for both usage and testing.
+
+### Fixed
+- **Test Runner Compatibility**: Resolved issues with test runner hangs and `dart:mirrors` import errors by isolating model imports and cleaning dependency usage.
+- **Code Generation Consistency**: Ensured generated mapper code is always in sync with model/entity definitions, including nullability and nested collections.
+
+### Why This Change
+- **Reliability**: Mapping logic and tests now robustly handle nulls, lists, and edge cases, reducing risk of runtime errors.
+- **Developer Experience**: Documentation and examples are clearer, easier to follow, and match best practices from leading Dart mapping libraries.
+- **Test Stability**: Test suite is more maintainable and less prone to dependency or import issues.
+- **Real-World Usability**: Example and API now reflect actual Clean Architecture and DDD usage patterns.
+
+### Migration Guide
+**Before:**
+- Models/entities may not support nulls or nested lists.
+- Tests may import models via central index files, risking runner errors.
+- Documentation may not reflect latest patterns.
+
+**After:**
+- Models/entities support nulls and nested lists.
+- Tests import only pure Dart entities or define models directly.
+- Documentation and examples match current best practices.
+
 ## [0.3.0] - 2025-08-13
 
 ### Changed
