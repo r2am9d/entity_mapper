@@ -83,10 +83,10 @@ class EntityMapperGenerator extends Generator {
     final mapperBaseName = _getEntityTypeFromModelType(className);
     final entityVariableName = _camelCase(mapperBaseName);
     final modelFields = element.fields
-        .where((f) => !f.isStatic && !f.isSynthetic)
+        .where((f) => !f.isStatic && f.isOriginDeclaration)
         .toList();
     final entityFields = entityElement.fields
-        .where((f) => !f.isStatic && !f.isSynthetic)
+        .where((f) => !f.isStatic && f.isOriginDeclaration)
         .toList();
     final modelFieldNames = modelFields.map((f) => f.displayName).toSet();
     final entityFieldNames = entityFields.map((f) => f.displayName).toSet();
@@ -493,20 +493,4 @@ class EntityMapperGenerator extends Generator {
     // Case 3: primitive / non-mappable — direct.
     return 'model.$fieldName';
   }
-}
-
-/// Polyfill `isSynthetic` for `Element` so the generator compiles against
-/// both analyzer 10.x (where `Element.isSynthetic` is a direct getter) and
-/// analyzer 13.x (which removed the getter in favor of `nonSynthetic`).
-///
-/// Semantics in analyzer 13: `element.nonSynthetic` returns the element
-/// itself if it is not synthetic, otherwise returns the source element that
-/// caused this synthetic element to be created. So an element is synthetic
-/// when it differs from its own `nonSynthetic`.
-///
-/// When analyzer 10's instance `isSynthetic` is in scope it shadows this
-/// extension automatically (instance members win over extension members),
-/// so the polyfill only activates on the newer analyzer.
-extension _SyntheticPolyfill on Element {
-  bool get isSynthetic => !identical(this, nonSynthetic);
 }
