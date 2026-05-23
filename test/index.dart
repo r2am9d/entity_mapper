@@ -1,3 +1,2 @@
 // Entities
-export 'entities/dummy.dart';
-export 'entities/user.dart';
+export 'entities/entities.dart';
