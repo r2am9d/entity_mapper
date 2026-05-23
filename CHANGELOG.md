@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-05-23
 
 ### Changed (Breaking)
-- **Minimum `analyzer` version raised to `^10.0.0`.** The package now uses the canonical (unsuffixed) Element API — `ClassElement`, `FieldElement`, `ConstructorElement`, `.fields`, `.constructors`, `.element` — instead of the transitional `Element2` / `element3` / `fields2` / `constructors2` APIs that have been removed in modern analyzer releases. Downstream projects pinned to older `analyzer` versions must upgrade.
-- **Minimum SDK constraints raised** to Dart `^3.11.0` and Flutter `>=3.41.0` to match current stable Flutter releases.
+- **Minimum `analyzer` version raised to `^10.0.0`.** The package now uses the canonical (unsuffixed) Element API — `ClassElement`, `FieldElement`, `ConstructorElement`, `.fields`, `.constructors`, `.element` — instead of the transitional `Element2` / `element3` / `fields2` / `constructors2` APIs that have been removed in modern analyzer releases. Field filtering also switched from the deprecated `Element.isSynthetic` getter to the fine-grained `isOriginDeclaration` predicate, eliminating `deprecated_member_use` warnings that would otherwise surface in consumer editors on analyzer 13. Downstream projects pinned to older `analyzer` versions must upgrade.
+- **Minimum SDK constraint raised** to Dart `^3.11.0`. Flutter is no longer a required SDK — the package is pure Dart and works in Flutter, Dart server-side, and CLI projects alike.
 - **`source_gen` and `build` constraints widened** (`>=3.1.0 <5.0.0` and `>=3.0.0 <5.0.0` respectively) so the package can resolve alongside modern build tooling and analyzer-coupled linters such as `bloc_lint`.
 
 ### Fixed
