@@ -5,6 +5,7 @@ targets:
         generate_for:
           - lib/**.dart
           - test/**.dart
+          - example/**.dart
         options:
           enabled: true
 

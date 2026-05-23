@@ -1,5 +1,6 @@
 import 'package:analyzer/dart/constant/value.dart';
-import 'package:analyzer/dart/element/element2.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:entity_mapper/src/annotations/map_to_entity.dart';
@@ -39,7 +40,7 @@ class EntityMapperGenerator extends Generator {
 
     // Generate mapping code for each annotated class
     for (final annotatedElement in annotated) {
-      final classElement = annotatedElement.element as ClassElement2;
+      final classElement = annotatedElement.element as ClassElement;
       buffer.writeln(
         _generateForElement(
           classElement,
@@ -55,7 +56,7 @@ class EntityMapperGenerator extends Generator {
   /// Generates mapping code for a single annotated model class.
   /// Performs strict field matching and multi-error reporting for nullability.
   String _generateForElement(
-    ClassElement2 element,
+    ClassElement element,
     DartObject? annotation,
     BuildStep buildStep,
   ) {
@@ -70,8 +71,8 @@ class EntityMapperGenerator extends Generator {
       );
     }
     final entityType = entityTypeReader.typeValue;
-    final entityElement = entityType.element3;
-    if (entityElement is! ClassElement2) {
+    final entityElement = entityType.element;
+    if (entityElement is! ClassElement) {
       throw InvalidGenerationSourceError(
         'entityType for @$className must be a class.',
         todo: 'Provide a class type for entityType in @$className.',
@@ -81,10 +82,10 @@ class EntityMapperGenerator extends Generator {
     // Prepare names and field lists
     final mapperBaseName = _getEntityTypeFromModelType(className);
     final entityVariableName = _camelCase(mapperBaseName);
-    final modelFields = element.fields2
+    final modelFields = element.fields
         .where((f) => !f.isStatic && !f.isSynthetic)
         .toList();
-    final entityFields = entityElement.fields2
+    final entityFields = entityElement.fields
         .where((f) => !f.isStatic && !f.isSynthetic)
         .toList();
     final modelFieldNames = modelFields.map((f) => f.displayName).toSet();
@@ -106,15 +107,15 @@ class EntityMapperGenerator extends Generator {
     }
 
     // Strict: fail if any required field in entity is missing from model
-    ConstructorElement2? entityConstructor;
-    for (final ctor in entityElement.constructors2) {
+    ConstructorElement? entityConstructor;
+    for (final ctor in entityElement.constructors) {
       if (ctor.displayName.isEmpty) {
         entityConstructor = ctor;
         break;
       }
     }
-    entityConstructor ??= entityElement.constructors2.isNotEmpty
-        ? entityElement.constructors2.first
+    entityConstructor ??= entityElement.constructors.isNotEmpty
+        ? entityElement.constructors.first
         : null;
 
     if (entityConstructor == null) {
@@ -138,17 +139,73 @@ class EntityMapperGenerator extends Generator {
       }
     }
 
+    // Resolve the model's constructor (for the inverse direction: detecting
+    // required model fields that have no counterpart in the entity).
+    ConstructorElement? modelConstructor;
+    for (final ctor in element.constructors) {
+      if (ctor.displayName.isEmpty) {
+        modelConstructor = ctor;
+        break;
+      }
+    }
+    modelConstructor ??= element.constructors.isNotEmpty
+        ? element.constructors.first
+        : null;
+
+    if (modelConstructor == null) {
+      throw InvalidGenerationSourceError(
+        'No constructors found for model [$className].',
+        todo: 'Add a constructor to your model.',
+      );
+    }
+
+    // Check for required *non-nullable* fields in model missing from entity.
+    // For required *nullable* model fields the generator passes `null`; for
+    // non-nullable ones there is no safe value to pass, so fail codegen now.
+    final unfillableRequired = <String>[];
+    for (final param in modelConstructor.formalParameters) {
+      final fieldName = param.displayName;
+      final isRequired =
+          param.isRequiredNamed ||
+          param.isRequiredPositional ||
+          (!param.isOptional);
+      if (!isRequired || commonFieldNames.contains(fieldName)) continue;
+      final field = modelFields.firstWhere(
+        (f) => f.displayName == fieldName,
+        orElse: () => throw InvalidGenerationSourceError(
+          'Constructor parameter "$fieldName" on model [$className] does not '
+          'correspond to any field declared on the class.',
+        ),
+      );
+      final isNullable =
+          field.type.nullabilitySuffix == NullabilitySuffix.question;
+      if (!isNullable) {
+        unfillableRequired.add(fieldName);
+      }
+    }
+    if (unfillableRequired.isNotEmpty) {
+      throw InvalidGenerationSourceError(
+        'Required non-nullable field(s) [${unfillableRequired.join(', ')}] in '
+        'model [$className] have no counterpart in entity '
+        '[${entityElement.displayName}]. The generator has no safe value to '
+        'pass when constructing the model from the entity.',
+        todo:
+            'Add these fields to the entity, make them optional in the model,'
+            ' or change their types to be nullable.',
+      );
+    }
+
     // Multi-error reporting for nullability mismatches between entity and model
     final nullabilityErrors = <String>[];
     for (final fieldName in commonFieldNames) {
-      FieldElement2? modelField;
+      FieldElement? modelField;
       for (final f in modelFields) {
         if (f.displayName == fieldName) {
           modelField = f;
           break;
         }
       }
-      FieldElement2? entityField;
+      FieldElement? entityField;
       for (final f in entityFields) {
         if (f.displayName == fieldName) {
           entityField = f;
@@ -196,6 +253,7 @@ class EntityMapperGenerator extends Generator {
           modelFields,
           entityFields,
           commonFieldNames,
+          modelConstructor,
         ),
       )
       ..writeln(
@@ -221,28 +279,49 @@ class EntityMapperGenerator extends Generator {
   }
 
   /// Generates static method to convert entity to model.
+  ///
+  /// Iterates the model's constructor parameters so the emitted call satisfies
+  /// every required argument:
+  /// - parameters whose name is in [commonFieldNames] are mapped from the
+  ///   entity via [_generateFieldAssignment];
+  /// - required-but-not-in-entity parameters of nullable type are passed
+  ///   `null` (the codegen has already validated non-nullable cases);
+  /// - optional-and-not-in-entity parameters are skipped so their defaults
+  ///   apply.
   String _generateToModelMethodStrict(
     String className,
     String entityClassName,
     String entityVariableName,
-    List<FieldElement2> modelFields,
-    List<FieldElement2> entityFields,
+    List<FieldElement> modelFields,
+    List<FieldElement> entityFields,
     Set<String> commonFieldNames,
+    ConstructorElement modelConstructor,
   ) {
     final buffer = StringBuffer()
       ..writeln('  /// Creates a [$className] from a [$entityClassName] entity')
       ..writeln('  static $className toModel($entityClassName entity) {')
       ..writeln('    return $className(');
-    for (final fieldName in commonFieldNames) {
-      final field = modelFields.firstWhere((f) => f.displayName == fieldName);
-      final fieldType = field.type;
-      final fieldAssignment = _generateFieldAssignment(
-        fieldName,
-        fieldType,
-        className,
-        entityClassName,
-      );
-      buffer.writeln('      $fieldName: $fieldAssignment,');
+    for (final param in modelConstructor.formalParameters) {
+      final fieldName = param.displayName;
+      final isRequired =
+          param.isRequiredNamed ||
+          param.isRequiredPositional ||
+          (!param.isOptional);
+      if (commonFieldNames.contains(fieldName)) {
+        final field = modelFields.firstWhere((f) => f.displayName == fieldName);
+        final fieldType = field.type;
+        final fieldAssignment = _generateFieldAssignment(
+          fieldName,
+          fieldType,
+          className,
+          entityClassName,
+        );
+        buffer.writeln('      $fieldName: $fieldAssignment,');
+      } else if (isRequired) {
+        // Pre-validated to be nullable; pass null.
+        buffer.writeln('      $fieldName: null,');
+      }
+      // else: optional parameter not in entity — skip so its default applies.
     }
     buffer
       ..writeln('    );')
@@ -254,7 +333,7 @@ class EntityMapperGenerator extends Generator {
   String _generateToEntityStaticMethodStrict(
     String entityClassName,
     String className,
-    List<FieldElement2> modelFields,
+    List<FieldElement> modelFields,
     Set<String> commonFieldNames,
   ) {
     final buffer = StringBuffer()
@@ -306,55 +385,128 @@ class EntityMapperGenerator extends Generator {
   }''';
   }
 
-  /// Handles mapping for `List<T>` fields where T is a mappable type.
+  /// Generates the right-hand expression for a model constructor argument
+  /// when converting an entity to a model.
+  ///
+  /// Three cases:
+  /// 1. `List<XModel>` (nullable or not) — `entity.field(?).map(XEntityMapper.toModel).toList()`.
+  /// 2. A non-list nested model type ending in `Model` — call the matching
+  ///    mapper. For a nullable type, guard with `field == null ? null : ...`.
+  /// 3. Primitives and other non-mappable types — direct passthrough.
   String _generateFieldAssignment(
     String fieldName,
     DartType fieldType,
     String modelClassName,
     String entityClassName,
   ) {
+    // Case 1: List<XModel>
     if (fieldType is ParameterizedType &&
         fieldType.typeArguments.length == 1 &&
-        (fieldType.element3?.displayName == 'List')) {
+        (fieldType.element?.displayName == 'List')) {
       final itemType = fieldType.typeArguments.first;
       final itemTypeName = itemType.getDisplayString();
-      // If itemType ends with 'Model', map from entity to model
       if (itemTypeName.endsWith('Model')) {
         final entityTypeName = itemTypeName.substring(
           0,
           itemTypeName.length - 5,
         );
         final mapperName = '${entityTypeName}EntityMapper';
-        return 'entity.$fieldName.map($mapperName.toModel).toList()';
+        final isNullable =
+            fieldType.nullabilitySuffix == NullabilitySuffix.question;
+        final accessor = isNullable ? '?.' : '.';
+        return 'entity.$fieldName${accessor}map($mapperName.toModel).toList()';
       }
     }
-    // Direct assignment for primitive or non-mappable types
+
+    // Case 2: non-list nested model type ending in `Model`.
+    final displayed = fieldType.getDisplayString();
+    final isNullable =
+        fieldType.nullabilitySuffix == NullabilitySuffix.question;
+    final cleanedTypeName = isNullable
+        ? displayed.substring(0, displayed.length - 1)
+        : displayed;
+    if (cleanedTypeName.endsWith('Model')) {
+      final entityTypeName = cleanedTypeName.substring(
+        0,
+        cleanedTypeName.length - 5,
+      );
+      final mapperName = '${entityTypeName}EntityMapper';
+      if (isNullable) {
+        return 'entity.$fieldName == null ? null : '
+            '$mapperName.toModel(entity.$fieldName!)';
+      }
+      return '$mapperName.toModel(entity.$fieldName)';
+    }
+
+    // Case 3: primitive / non-mappable — direct.
     return 'entity.$fieldName';
   }
 
-  /// Handles mapping for `List<T>` fields where T is a mappable type.
+  /// Generates the right-hand expression for an entity constructor argument
+  /// when converting a model to an entity. Mirror of [_generateFieldAssignment]
+  /// in the opposite direction.
   String _generateToEntityFieldAssignment(
     String fieldName,
     DartType fieldType,
     String modelClassName,
     String entityClassName,
   ) {
+    // Case 1: List<XModel>
     if (fieldType is ParameterizedType &&
         fieldType.typeArguments.length == 1 &&
-        (fieldType.element3?.displayName == 'List')) {
+        (fieldType.element?.displayName == 'List')) {
       final itemType = fieldType.typeArguments.first;
       final itemTypeName = itemType.getDisplayString();
-      // If itemType ends with 'Model', map from model to entity
       if (itemTypeName.endsWith('Model')) {
         final entityTypeName = itemTypeName.substring(
           0,
           itemTypeName.length - 5,
         );
         final mapperName = '${entityTypeName}EntityMapper';
-        return 'model.$fieldName.map($mapperName.toEntity).toList()';
+        final isNullable =
+            fieldType.nullabilitySuffix == NullabilitySuffix.question;
+        final accessor = isNullable ? '?.' : '.';
+        return 'model.$fieldName${accessor}map($mapperName.toEntity).toList()';
       }
     }
-    // Direct assignment for primitive or non-mappable types
+
+    // Case 2: non-list nested model type ending in `Model`.
+    final displayed = fieldType.getDisplayString();
+    final isNullable =
+        fieldType.nullabilitySuffix == NullabilitySuffix.question;
+    final cleanedTypeName = isNullable
+        ? displayed.substring(0, displayed.length - 1)
+        : displayed;
+    if (cleanedTypeName.endsWith('Model')) {
+      final entityTypeName = cleanedTypeName.substring(
+        0,
+        cleanedTypeName.length - 5,
+      );
+      final mapperName = '${entityTypeName}EntityMapper';
+      if (isNullable) {
+        return 'model.$fieldName == null ? null : '
+            '$mapperName.toEntity(model.$fieldName!)';
+      }
+      return '$mapperName.toEntity(model.$fieldName)';
+    }
+
+    // Case 3: primitive / non-mappable — direct.
     return 'model.$fieldName';
   }
+}
+
+/// Polyfill `isSynthetic` for `Element` so the generator compiles against
+/// both analyzer 10.x (where `Element.isSynthetic` is a direct getter) and
+/// analyzer 13.x (which removed the getter in favor of `nonSynthetic`).
+///
+/// Semantics in analyzer 13: `element.nonSynthetic` returns the element
+/// itself if it is not synthetic, otherwise returns the source element that
+/// caused this synthetic element to be created. So an element is synthetic
+/// when it differs from its own `nonSynthetic`.
+///
+/// When analyzer 10's instance `isSynthetic` is in scope it shadows this
+/// extension automatically (instance members win over extension members),
+/// so the polyfill only activates on the newer analyzer.
+extension _SyntheticPolyfill on Element {
+  bool get isSynthetic => !identical(this, nonSynthetic);
 }

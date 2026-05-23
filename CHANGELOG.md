@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-23
+
+### Changed (Breaking)
+- **Minimum `analyzer` version raised to `^10.0.0`.** The package now uses the canonical (unsuffixed) Element API — `ClassElement`, `FieldElement`, `ConstructorElement`, `.fields`, `.constructors`, `.element` — instead of the transitional `Element2` / `element3` / `fields2` / `constructors2` APIs that have been removed in modern analyzer releases. Downstream projects pinned to older `analyzer` versions must upgrade.
+- **Minimum SDK constraints raised** to Dart `^3.11.0` and Flutter `>=3.41.0` to match current stable Flutter releases.
+- **`source_gen` and `build` constraints widened** (`>=3.1.0 <5.0.0` and `>=3.0.0 <5.0.0` respectively) so the package can resolve alongside modern build tooling and analyzer-coupled linters such as `bloc_lint`.
+
+### Fixed
+- **Non-list nested model fields were silently broken.** The README advertises support for nested models (e.g. `final EngineModel engine`), but the generator treated such fields as primitives and emitted a raw `entity.engine` assignment — a type mismatch between `Engine` and `EngineModel` that failed to compile. The generator now detects any non-list field whose type name ends with `Model` and emits the appropriate mapper call: `XEntityMapper.toModel(entity.field)` in the entity → model direction and `XEntityMapper.toEntity(model.field)` in the reverse direction. Nullable variants emit a `field == null ? null : Mapper.toX(field!)` guard. The previous code path only worked for primitives and `List<XModel>` fields.
+- **Nullable list mapping was broken.** Generated mappers for `List<T>?` fields emitted `entity.field.map(...)` without a null-aware operator, producing code that failed to compile. The generator now emits `entity.field?.map(...).toList()` when the list type is nullable. Same fix applied to the model → entity direction.
+- **Silent omission of required model fields.** When a model declared a `required` constructor parameter that had no counterpart on the entity, the generator silently produced a constructor call missing that argument — the generated `.entity_mapper.dart` then failed to compile with no actionable error. The generator now:
+  - Passes `null` if the missing required model field is of a nullable type.
+  - Fails codegen with a clear `InvalidGenerationSourceError` if the missing required model field is non-nullable, naming the field and the affected model/entity pair so the issue is fixed at its source.
+
+### Added
+- **Comprehensive test suite.** The `test/` directory now exercises every real-world scenario users encounter: primitives across all built-in types (including `DateTime`), the empty class, single non-list nested model, list of primitives, list of nested models, deeply nested lists, every nullability variant (nullable primitive, nullable nested model, nullable list — both null and populated), defaults, required-nullable fields with no entity counterpart, the `XEntityMappable` mixin's `toEntity()`, the `ensureInitialized()` singleton, and multiple `@MapToEntity` classes co-existing in one file. 44 tests covering 9 scenario groups.
+
+### Why This Change
+The 0.4.0 release advertised nullability support, but the generator's nullable-list path produced uncompilable output and one inverse-direction edge case (required model field absent from entity) silently shipped broken code. These were real correctness defects; 0.5.0 makes the generator's behavior match the README's claims. The bump to a modern `analyzer` floor is the breaking change that unlocks consumption by projects whose dependency graph already requires `_fe_analyzer_shared >=93.0.0` (e.g. anything using `bloc_lint ^0.4.0` or newer).
+
+### Migration Guide
+**Before (0.4.0):**
+- `analyzer: ^7.7.1` — works only with older Flutter projects.
+- `List<T>?` fields generated incorrect code.
+- Models with required fields not present in entities produced uncompilable mappers without any warning at codegen time.
+
+**After (0.5.0):**
+- `analyzer: >=10.0.0 <14.0.0` — required for resolution alongside modern linters.
+- `List<T>?` fields generate `?.map(...).toList()` correctly.
+- Missing required model fields produce a clear codegen error (non-nullable) or pass `null` (nullable).
+
+If your project pins `analyzer ^7` or `^8` you cannot upgrade to `entity_mapper 0.5.0` without updating the rest of your dependency graph first.
+
 ## [0.4.0] - 2025-08-14
 
 ### Added
